@@ -1,0 +1,7 @@
+{
+  "name": "ImDone - Voice Done List",
+  "description": "A voice-activated 'Done List' app to record achievements instantly. Features local storage, CSV export, and clipboard integration.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
