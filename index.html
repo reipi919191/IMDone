@@ -1,9 +1,15 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description" content="音声で「やったこと」を記録するシンプルメモアプリ">
     <title>ImDone - 音声やったことメモ</title>
+    
+    <!-- Favicon (Emoji) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎙️</text></svg>">
+
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -13,38 +19,415 @@
               primary: '#3b82f6',
               secondary: '#64748b',
               accent: '#f59e0b',
+            },
+            fontFamily: {
+              sans: ['Helvetica Neue', 'Arial', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', 'sans-serif'],
             }
           }
         }
       }
     </script>
+
+    <!-- React & ReactDOM & Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
     <style>
-      /* Custom scrollbar for better mobile feel */
-      ::-webkit-scrollbar {
-        width: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #f1f5f9;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 3px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
-      }
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      
+      /* Mobile SafeArea */
+      .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+      .pt-safe { padding-top: env(safe-area-inset-top); }
+      
+      /* Tap Highlight */
+      * { -webkit-tap-highlight-color: transparent; }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
   }
 }
 </script>
 </head>
-  <body class="bg-slate-50 text-slate-900 font-sans antialiased h-screen overflow-hidden selection:bg-primary/20">
-    <div id="root"></div>
-  </body>
+<body class="bg-slate-50 text-slate-900 font-sans antialiased h-[100dvh] overflow-hidden selection:bg-blue-100">
+    <div id="root" class="h-full"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+        // --- Constants & Icons ---
+        const ICONS = {
+            Microphone: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" x2="12" y1="19" y2="22" /></svg>
+            ),
+            MicrophoneOff: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><line x1="1" x2="23" y1="1" y2="23" /><path d="M9 9v3a3 3 0 0 0 5.12 2.12" /><path d="M15 9.34V5a3 3 0 0 0-5.94-.6" /><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" /><line x1="12" x2="12" y1="19" y2="22" /></svg>
+            ),
+            Save: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-8H7v8" /><path d="M7 3v5h8" /></svg>
+            ),
+            Trash: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+            ),
+            Restore: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+            ),
+            List: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></svg>
+            ),
+            Search: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            ),
+            Download: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
+            ),
+            Copy: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+            ),
+            Check: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polyline points="20 6 9 17 4 12" /></svg>
+            ),
+            X: (props) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+            ),
+        };
+
+        // --- Utils ---
+        const STORAGE_KEY = 'imdone_memos';
+        const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+        const loadMemos = () => {
+            try {
+                const stored = localStorage.getItem(STORAGE_KEY);
+                return stored ? JSON.parse(stored) : [];
+            } catch (error) {
+                console.error('Failed to load memos', error);
+                return [];
+            }
+        };
+
+        const saveMemos = (memos) => {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(memos));
+            } catch (error) {
+                console.error('Failed to save memos', error);
+            }
+        };
+
+        const formatDateTime = (timestamp) => {
+            const date = new Date(timestamp);
+            const pad = (n) => n.toString().padStart(2, '0');
+            return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        };
+
+        const copyToClipboard = async (memos) => {
+            const text = memos.map(m => `${formatDateTime(m.timestamp)}, ${m.content}`).join('\n');
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (err) {
+                console.error('Copy failed', err);
+                return false;
+            }
+        };
+
+        const exportToCsv = (memos) => {
+            const csvContent = memos.map(m => {
+                const dateStr = formatDateTime(m.timestamp);
+                const safeContent = m.content.replace(/"/g, '""');
+                return `"${dateStr}","${safeContent}"`;
+            }).join('\n');
+            const header = '"日時","メモ内容"\n';
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, header, csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            const now = new Date();
+            const filenameDate = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}`;
+            link.download = `imdone_export_${filenameDate}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        // --- Hooks ---
+        const useSpeechRecognition = () => {
+            const [isListening, setIsListening] = useState(false);
+            const [transcript, setTranscript] = useState('');
+            const [interimTranscript, setInterimTranscript] = useState('');
+            const [error, setError] = useState(null);
+            const recognitionRef = useRef(null);
+
+            useEffect(() => {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (SpeechRecognition) {
+                    const recognition = new SpeechRecognition();
+                    recognition.continuous = true;
+                    recognition.interimResults = true;
+                    recognition.lang = 'ja-JP';
+
+                    recognition.onresult = (event) => {
+                        let final = '';
+                        let interim = '';
+                        for (let i = event.resultIndex; i < event.results.length; ++i) {
+                            if (event.results[i].isFinal) final += event.results[i][0].transcript;
+                            else interim += event.results[i][0].transcript;
+                        }
+                        if (final) setTranscript(prev => prev + final);
+                        setInterimTranscript(interim);
+                    };
+
+                    recognition.onerror = (event) => {
+                        console.error('Speech recognition error', event);
+                        setError('音声認識エラーが発生しました。');
+                        setIsListening(false);
+                    };
+                    recognition.onend = () => {
+                        setIsListening(false);
+                        setInterimTranscript('');
+                    };
+                    recognitionRef.current = recognition;
+                } else {
+                    setError('このブラウザは音声認識をサポートしていません。');
+                }
+            }, []);
+
+            const toggleListening = useCallback(() => {
+                if (isListening) {
+                    recognitionRef.current?.stop();
+                    setIsListening(false);
+                } else {
+                    setError(null);
+                    recognitionRef.current?.start();
+                    setIsListening(true);
+                }
+            }, [isListening]);
+
+            const resetTranscript = useCallback(() => {
+                setTranscript('');
+                setInterimTranscript('');
+            }, []);
+
+            return { isListening, transcript, interimTranscript, error, toggleListening, resetTranscript, setManualTranscript: setTranscript };
+        };
+
+        // --- Components ---
+        const Header = ({ onExportCsv, onCopyToClipboard, copySuccess, showTrash, onToggleTrash }) => (
+            <header className="bg-white/95 backdrop-blur-sm shadow-sm sticky top-0 z-30 pt-safe">
+                <div className="max-w-md mx-auto px-4 h-16 flex items-center justify-between">
+                    <div className="flex items-center gap-2 cursor-pointer select-none" onClick={() => { if(showTrash) onToggleTrash(); }}>
+                        <div className={`p-1.5 rounded-lg transition-colors ${showTrash ? 'bg-slate-200 text-slate-600' : 'bg-blue-100 text-blue-600'}`}>
+                            {showTrash ? <ICONS.Trash className="w-5 h-5" /> : <ICONS.Check className="w-5 h-5" />}
+                        </div>
+                        <h1 className="text-xl font-bold text-slate-800 tracking-tight">ImDone</h1>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button onClick={onToggleTrash} className={`p-2 rounded-full transition-colors ${showTrash ? 'bg-slate-200 text-slate-700' : 'hover:bg-slate-100 text-slate-600'}`} title={showTrash ? "リストに戻る" : "ゴミ箱を表示"}>
+                            {showTrash ? <ICONS.List className="w-5 h-5" /> : <ICONS.Trash className="w-5 h-5" />}
+                        </button>
+                        <div className="w-px h-6 bg-slate-200 mx-1"></div>
+                        <button onClick={onCopyToClipboard} className={`p-2 rounded-full transition-colors relative group ${copySuccess ? 'bg-green-100 text-green-700' : 'hover:bg-slate-100 text-slate-600'}`} title="クリップボードにコピー">
+                            {copySuccess ? <ICONS.Check className="w-5 h-5" /> : <ICONS.Copy className="w-5 h-5" />}
+                        </button>
+                        <button onClick={onExportCsv} className="p-2 hover:bg-slate-100 text-slate-600 rounded-full transition-colors" title="CSV出力">
+                            <ICONS.Download className="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
+            </header>
+        );
+
+        const MemoList = ({ memos, onDelete, onRestore, onPermanentDelete, isTrashMode }) => {
+            if (memos.length === 0) {
+                return (
+                    <div className="flex flex-col items-center justify-center py-20 text-slate-400 select-none">
+                        <div className="bg-slate-100 p-6 rounded-full mb-4">
+                            {isTrashMode ? <ICONS.Trash className="w-10 h-10 opacity-40" /> : <ICONS.Microphone className="w-10 h-10 opacity-40" />}
+                        </div>
+                        <p className="text-center text-sm font-medium">{isTrashMode ? 'ゴミ箱は空です' : <>マイクボタンを押して<br />「やったこと」を記録しましょう</>}</p>
+                    </div>
+                );
+            }
+
+            const getRemainingDays = (deletedAt) => {
+                if (!deletedAt) return 0;
+                const elapsed = Date.now() - deletedAt;
+                const remaining = THIRTY_DAYS_MS - elapsed;
+                return Math.max(0, Math.ceil(remaining / (24 * 60 * 60 * 1000)));
+            };
+
+            return (
+                <div className="space-y-3 pb-32">
+                    {memos.map((memo) => (
+                        <div key={memo.id} className={`rounded-xl p-4 shadow-sm border transition-all active:scale-[0.99] ${isTrashMode ? 'bg-slate-50 border-slate-200' : 'bg-white border-slate-100'}`}>
+                            <div className="flex justify-between items-start gap-3">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <p className="text-xs font-bold text-blue-600 font-mono">{formatDateTime(memo.timestamp)}</p>
+                                        {isTrashMode && memo.deletedAt && (
+                                            <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">あと{getRemainingDays(memo.deletedAt)}日</span>
+                                        )}
+                                    </div>
+                                    <p className={`text-base break-words whitespace-pre-wrap leading-relaxed ${isTrashMode ? 'text-slate-500' : 'text-slate-800'}`}>{memo.content}</p>
+                                </div>
+                                <div className="flex items-center gap-1 -mr-2">
+                                    {isTrashMode ? (
+                                        <>
+                                            <button onClick={() => onRestore(memo.id)} className="text-blue-400 hover:text-blue-600 transition-colors p-2" title="復元する"><ICONS.Restore className="w-5 h-5" /></button>
+                                            <button onClick={() => { if(window.confirm('完全に削除しますか？')) onPermanentDelete(memo.id); }} className="text-slate-300 hover:text-red-500 transition-colors p-2" title="完全に削除"><ICONS.X className="w-5 h-5" /></button>
+                                        </>
+                                    ) : (
+                                        <button onClick={() => onDelete(memo.id)} className="text-slate-300 hover:text-red-500 transition-colors p-2" title="ゴミ箱へ移動"><ICONS.Trash className="w-4.5 h-4.5" /></button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        const InputArea = ({ isListening, transcript, interimTranscript, onToggleListening, onSave, onChangeText }) => {
+            const textareaRef = useRef(null);
+            const hasContent = transcript.trim().length > 0;
+
+            useEffect(() => {
+                if (textareaRef.current) {
+                    textareaRef.current.style.height = 'auto';
+                    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+                }
+            }, [transcript, interimTranscript]);
+
+            return (
+                <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 p-4 pb-8 pb-safe z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                    <div className="max-w-md mx-auto flex flex-col gap-3">
+                        <div className="relative">
+                            <textarea
+                                ref={textareaRef}
+                                value={isListening ? transcript + interimTranscript : transcript}
+                                onChange={(e) => onChangeText(e.target.value)}
+                                placeholder="記録する内容を話してください..."
+                                className={`w-full bg-slate-100 rounded-2xl px-4 py-3 pr-12 text-base focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none transition-all ${isListening ? 'border-blue-400 ring-2 ring-blue-100' : 'border-transparent'}`}
+                                rows={1}
+                                disabled={isListening && interimTranscript.length > 0}
+                            />
+                            {hasContent && !isListening && (
+                                <button onClick={() => onChangeText('')} className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"><ICONS.X className="w-5 h-5" /></button>
+                            )}
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                            <button onClick={onToggleListening} className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-full font-bold text-lg transition-all shadow-lg active:scale-95 ${isListening ? 'bg-red-500 text-white shadow-red-500/30 animate-pulse' : 'bg-slate-800 text-white shadow-slate-800/20 hover:bg-slate-700'}`}>
+                                {isListening ? <><ICONS.MicrophoneOff className="w-6 h-6" /><span>停止</span></> : <><ICONS.Microphone className="w-6 h-6" /><span>話す</span></>}
+                            </button>
+                            <button onClick={onSave} disabled={!hasContent || isListening} className={`w-14 h-14 flex items-center justify-center rounded-full transition-all shadow-md border ${hasContent && !isListening ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30 hover:bg-blue-700 active:scale-95' : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'}`}>
+                                <ICONS.Save className="w-6 h-6" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [memos, setMemos] = useState([]);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [copySuccess, setCopySuccess] = useState(false);
+            const [showTrash, setShowTrash] = useState(false);
+            const { isListening, transcript, interimTranscript, error, toggleListening, resetTranscript, setManualTranscript } = useSpeechRecognition();
+
+            useEffect(() => {
+                const loaded = loadMemos();
+                const now = Date.now();
+                const activeAndRecentTrash = loaded.filter(memo => {
+                    if (!memo.deletedAt) return true;
+                    return (now - memo.deletedAt) < THIRTY_DAYS_MS;
+                });
+                if (activeAndRecentTrash.length !== loaded.length) saveMemos(activeAndRecentTrash);
+                setMemos(activeAndRecentTrash.sort((a, b) => b.timestamp - a.timestamp));
+            }, []);
+
+            const handleSave = () => {
+                if (!transcript.trim()) return;
+                const newMemo = { id: crypto.randomUUID(), content: transcript.trim(), timestamp: Date.now() };
+                const updatedMemos = [newMemo, ...memos];
+                setMemos(updatedMemos);
+                saveMemos(updatedMemos);
+                resetTranscript();
+            };
+
+            const handleMoveToTrash = (id) => {
+                const updatedMemos = memos.map(m => m.id === id ? { ...m, deletedAt: Date.now() } : m);
+                setMemos(updatedMemos);
+                saveMemos(updatedMemos);
+            };
+
+            const handleRestore = (id) => {
+                const updatedMemos = memos.map(m => m.id === id ? { ...m, deletedAt: undefined } : m);
+                setMemos(updatedMemos);
+                saveMemos(updatedMemos);
+            };
+
+            const handlePermanentDelete = (id) => {
+                const updatedMemos = memos.filter(m => m.id !== id);
+                setMemos(updatedMemos);
+                saveMemos(updatedMemos);
+            };
+
+            const filteredMemos = useMemo(() => {
+                let currentSet = memos.filter(m => showTrash ? !!m.deletedAt : !m.deletedAt);
+                if (searchQuery) {
+                    const lowerQ = searchQuery.toLowerCase();
+                    currentSet = currentSet.filter(m => m.content.toLowerCase().includes(lowerQ));
+                }
+                return currentSet.sort((a, b) => b.timestamp - a.timestamp);
+            }, [memos, searchQuery, showTrash]);
+
+            const handleCopy = async () => {
+                const success = await copyToClipboard(filteredMemos);
+                if (success) {
+                    setCopySuccess(true);
+                    setTimeout(() => setCopySuccess(false), 2000);
+                }
+            };
+
+            return (
+                <div className={`h-full flex flex-col font-sans ${showTrash ? 'bg-slate-100' : 'bg-slate-50'} text-slate-900 transition-colors`}>
+                    <Header onExportCsv={() => exportToCsv(filteredMemos)} onCopyToClipboard={handleCopy} copySuccess={copySuccess} showTrash={showTrash} onToggleTrash={() => setShowTrash(!showTrash)} />
+                    <main className="flex-1 overflow-y-auto max-w-md w-full mx-auto px-4 py-6">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="relative flex-1">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><ICONS.Search className="w-5 h-5" /></div>
+                                <input type="text" placeholder={showTrash ? "ゴミ箱を検索..." : "キーワードで検索..."} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors" />
+                            </div>
+                        </div>
+                        {showTrash && (
+                            <div className="mb-4 p-3 bg-slate-200 rounded-lg text-sm text-slate-600 flex items-center justify-between animate-fade-in">
+                                <span className="flex items-center gap-2"><ICONS.Trash className="w-4 h-4" />ゴミ箱（30日後に自動削除）</span>
+                            </div>
+                        )}
+                        {error && (
+                            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100 flex items-center gap-2 animate-fade-in"><ICONS.MicrophoneOff className="w-4 h-4" />{error}</div>
+                        )}
+                        <MemoList memos={filteredMemos} onDelete={handleMoveToTrash} onRestore={handleRestore} onPermanentDelete={handlePermanentDelete} isTrashMode={showTrash} />
+                    </main>
+                    {!showTrash && <InputArea isListening={isListening} transcript={transcript} interimTranscript={interimTranscript} onToggleListening={toggleListening} onSave={handleSave} onChangeText={setManualTranscript} />}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
 </html>
